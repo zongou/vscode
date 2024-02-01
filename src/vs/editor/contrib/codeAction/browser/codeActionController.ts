@@ -38,6 +38,7 @@ import { isHighContrast } from 'vs/platform/theme/common/theme';
 import { registerThemingParticipant } from 'vs/platform/theme/common/themeService';
 import { CodeActionAutoApply, CodeActionFilter, CodeActionItem, CodeActionSet, CodeActionTrigger, CodeActionTriggerSource } from '../common/types';
 import { CodeActionModel, CodeActionsState } from './codeActionModel';
+import { isAndroid } from 'vs/base/common/platform';
 
 
 interface IActionShowOptions {
@@ -95,7 +96,9 @@ export class CodeActionController extends Disposable implements IEditorContribut
 
 		this._resolver = instantiationService.createInstance(CodeActionKeybindingResolver);
 
-		this._register(this._editor.onDidLayoutChange(() => this._actionWidgetService.hide()));
+		if (!isAndroid) {
+			this._register(this._editor.onDidLayoutChange(() => this._actionWidgetService.hide()));
+		}
 	}
 
 	override dispose() {

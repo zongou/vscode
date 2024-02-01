@@ -1194,6 +1194,10 @@ export const EventType = {
 	POINTER_LEAVE: 'pointerleave',
 	CONTEXT_MENU: 'contextmenu',
 	WHEEL: 'wheel',
+	// Touch
+	TOUCH_START: 'touchstart',
+	TOUCH_MOVE: 'touchmove',
+	TOUCH_END: 'touchend',
 	// Keyboard
 	KEY_DOWN: 'keydown',
 	KEY_PRESS: 'keypress',
