@@ -251,7 +251,7 @@ export class ContextView extends Disposable {
 			return;
 		}
 
-		if (this.delegate!.canRelayout === false && !(platform.isIOS && BrowserFeatures.pointerEvents)) {
+		if (this.delegate!.canRelayout === false && !(platform.isIOS && BrowserFeatures.pointerEvents) && !platform.isAndroid) {
 			this.hide();
 			return;
 		}
