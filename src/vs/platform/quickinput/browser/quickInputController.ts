@@ -677,7 +677,7 @@ export class QuickInputController extends Disposable {
 			this.ui.container.style.top = `${this.titleBarOffset}px`;
 
 			const style = this.ui.container.style;
-			const width = Math.min(this.dimension!.width * 0.62 /* golden cut */, QuickInputController.MAX_WIDTH);
+			const width = Math.min(this.dimension!.width * 0.9 /* golden cut */, QuickInputController.MAX_WIDTH);
 			style.width = width + 'px';
 			style.marginLeft = '-' + (width / 2) + 'px';
 
