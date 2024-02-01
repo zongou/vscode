@@ -5,7 +5,7 @@
 
 import * as nls from 'vs/nls';
 import { IConfigurationService } from 'vs/platform/configuration/common/configuration';
-import { OS, OperatingSystem } from 'vs/base/common/platform';
+import { OS, OperatingSystem, isAndroid } from 'vs/base/common/platform';
 import { ConfigurationScope, Extensions as ConfigExtensions, IConfigurationNode, IConfigurationRegistry } from 'vs/platform/configuration/common/configurationRegistry';
 import { Registry } from 'vs/platform/registry/common/platform';
 
@@ -37,7 +37,7 @@ const keyboardConfiguration: IConfigurationNode = {
 			scope: ConfigurationScope.APPLICATION,
 			type: 'string',
 			enum: ['code', 'keyCode'],
-			default: 'code',
+			default: isAndroid ? 'keyCode' : 'code',
 			markdownDescription: nls.localize('dispatch', "Controls the dispatching logic for key presses to use either `code` (recommended) or `keyCode`."),
 			included: OS === OperatingSystem.Macintosh || OS === OperatingSystem.Linux
 		},
