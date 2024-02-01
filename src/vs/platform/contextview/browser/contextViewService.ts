@@ -7,6 +7,7 @@ import { ContextView, ContextViewDOMPosition } from 'vs/base/browser/ui/contextv
 import { Disposable, IDisposable, toDisposable } from 'vs/base/common/lifecycle';
 import { ILayoutService } from 'vs/platform/layout/browser/layoutService';
 import { IContextViewDelegate, IContextViewService } from './contextView';
+import { isAndroid } from 'vs/base/common/platform';
 
 export class ContextViewService extends Disposable implements IContextViewService {
 	declare readonly _serviceBrand: undefined;
@@ -35,15 +36,19 @@ export class ContextViewService extends Disposable implements IContextViewServic
 	}
 
 	showContextView(delegate: IContextViewDelegate, container?: HTMLElement, shadowRoot?: boolean): IDisposable {
-		if (container) {
-			if (container !== this.container || this.shadowRoot !== shadowRoot) {
-				this.container = container;
-				this.setContainer(container, shadowRoot ? ContextViewDOMPosition.FIXED_SHADOW : ContextViewDOMPosition.FIXED);
-			}
-		} else {
-			if (this.layoutService.hasContainer && this.container !== this.layoutService.activeContainer) {
-				this.container = this.layoutService.activeContainer;
-				this.setContainer(this.container, ContextViewDOMPosition.ABSOLUTE);
+		if(isAndroid){
+			this.contextView.setContainer(this.layoutService.activeContainer, ContextViewDOMPosition.ABSOLUTE);
+		}else{
+			if (container) {
+				if (container !== this.container || this.shadowRoot !== shadowRoot) {
+					this.container = container;
+					this.setContainer(container, shadowRoot ? ContextViewDOMPosition.FIXED_SHADOW : ContextViewDOMPosition.FIXED);
+				}
+			} else {
+				if (this.layoutService.hasContainer && this.container !== this.layoutService.activeContainer) {
+					this.container = this.layoutService.activeContainer;
+					this.setContainer(this.container, ContextViewDOMPosition.ABSOLUTE);
+				}
 			}
 		}
 
