@@ -5,7 +5,7 @@
 
 import * as nls from '../../../nls.js';
 import { IConfigurationService } from '../../configuration/common/configuration.js';
-import { OS, OperatingSystem } from '../../../base/common/platform.js';
+import { OS, OperatingSystem, isAndroid } from '../../../base/common/platform.js';
 import { ConfigurationScope, Extensions as ConfigExtensions, IConfigurationNode, IConfigurationRegistry } from '../../configuration/common/configurationRegistry.js';
 import { Registry } from '../../registry/common/platform.js';
 
@@ -37,7 +37,7 @@ const keyboardConfiguration: IConfigurationNode = {
 			scope: ConfigurationScope.APPLICATION,
 			type: 'string',
 			enum: ['code', 'keyCode'],
-			default: 'code',
+			default: isAndroid ? 'keyCode' : 'code',
 			markdownDescription: nls.localize('dispatch', "Controls the dispatching logic for key presses to use either `code` (recommended) or `keyCode`."),
 			included: OS === OperatingSystem.Macintosh || OS === OperatingSystem.Linux
 		},
