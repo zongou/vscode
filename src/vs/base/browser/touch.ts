@@ -73,6 +73,7 @@ export class Gesture extends Disposable {
 	private static readonly HOLD_DELAY = 700;
 
 	private dispatched = false;
+	private dispatchedEventType: string | undefined;
 	private readonly targets = new LinkedList<HTMLElement>();
 	private readonly ignoreTargets = new LinkedList<HTMLElement>();
 	private handle: IDisposable | null;
@@ -226,6 +227,8 @@ export class Gesture extends Disposable {
 					deltaY > 0 ? 1 : -1,		// y direction
 					finalY						// y now
 				);
+
+				this.dispatchedEventType = EventType.Change;
 			}
 
 
@@ -235,7 +238,10 @@ export class Gesture extends Disposable {
 		}
 
 		if (this.dispatched) {
-			e.preventDefault();
+			if (this.dispatchedEventType !== EventType.Change) {
+				e.preventDefault();
+			}
+			this.dispatchedEventType = undefined;
 			e.stopPropagation();
 			this.dispatched = false;
 		}
