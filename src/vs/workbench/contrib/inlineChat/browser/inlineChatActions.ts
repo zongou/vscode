@@ -53,7 +53,7 @@ export class StartSessionAction extends EditorAction2 {
 			icon: START_INLINE_CHAT,
 			menu: [{
 				id: MenuId.EditorTitle,
-				when: ContextKeyExpr.and(CTX_INLINE_CHAT_TOOLBAR_ICON_ENABLED, CTX_INLINE_CHAT_HAS_PROVIDER, CTX_INLINE_CHAT_VISIBLE.toNegated(), EditorContextKeys.focus),
+				when: ContextKeyExpr.and(CTX_INLINE_CHAT_TOOLBAR_ICON_ENABLED, CTX_INLINE_CHAT_HAS_PROVIDER, CTX_INLINE_CHAT_VISIBLE.toNegated(), EditorContextKeys.writable),
 				group: 'navigation',
 				order: -1000000, // at the very front
 			}],
