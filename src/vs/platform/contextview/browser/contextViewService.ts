@@ -8,6 +8,7 @@ import { Disposable } from '../../../base/common/lifecycle.js';
 import { ILayoutService } from '../../layout/browser/layoutService.js';
 import { IContextViewDelegate, IContextViewService, IOpenContextView } from './contextView.js';
 import { getWindow } from '../../../base/browser/dom.js';
+import { isAndroid } from '../../../base/browser/browser.js';
 
 export class ContextViewHandler extends Disposable implements IContextViewProvider {
 
@@ -27,19 +28,24 @@ export class ContextViewHandler extends Disposable implements IContextViewProvid
 
 	showContextView(delegate: IContextViewDelegate, container?: HTMLElement, shadowRoot?: boolean): IOpenContextView {
 		let domPosition: ContextViewDOMPosition;
-		if (container) {
-			if (container === this.layoutService.getContainer(getWindow(container))) {
-				domPosition = ContextViewDOMPosition.ABSOLUTE;
-			} else if (shadowRoot) {
-				domPosition = ContextViewDOMPosition.FIXED_SHADOW;
-			} else {
-				domPosition = ContextViewDOMPosition.FIXED;
-			}
+		if (isAndroid) {
+			this.contextView.setContainer(this.layoutService.activeContainer, ContextViewDOMPosition.ABSOLUTE);
 		} else {
-			domPosition = ContextViewDOMPosition.ABSOLUTE;
+			if (container) {
+				if (container === this.layoutService.getContainer(getWindow(container))) {
+					domPosition = ContextViewDOMPosition.ABSOLUTE;
+				} else if (shadowRoot) {
+					domPosition = ContextViewDOMPosition.FIXED_SHADOW;
+				} else {
+					domPosition = ContextViewDOMPosition.FIXED;
+				}
+			} else {
+				domPosition = ContextViewDOMPosition.ABSOLUTE;
+			}
+
+			this.contextView.setContainer(container ?? this.layoutService.activeContainer, domPosition);
 		}
 
-		this.contextView.setContainer(container ?? this.layoutService.activeContainer, domPosition);
 
 		this.contextView.show(delegate);
 
