@@ -1,0 +1,296 @@
+name: Build vscode server
+run-name: Build vscode server ${{github.event.inputs.branch}}
+on:
+  # push:
+  #   branches:
+  #     - main
+  #     - main-dev
+  # pull_request:
+  #   branches:
+  #     - main
+  #     - main-dev
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "vscode branch:"
+        default: release/1.88
+        required: false
+      depth:
+        description: "checkout action depth:"
+        required: false
+      resetTo:
+        description: "reset to commit"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tasks:
+          - vscode-web
+          - vscode-web-min
+          - vscode-reh-web-linux-x64-min
+          - vscode-reh-web-linux-arm64-min
+          - vscode-reh-web-android-arm64-min
+          - vscode-reh-web-alpine-arm64-min
+          - vscode-reh-web-linux-alpine-min
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.1.1
+        with:
+          repository: ${{github.repository}}
+          ref: ${{inputs.branch}}
+          fetch-depth: ${{inputs.depth||'1'}}
+
+      - name: Get node version for building
+        id: get_node_version
+        run: echo node_version=$(grep target <remote/.yarnrc | grep -o '".*"' | sed 's^"^^g') >> $GITHUB_OUTPUT
+
+      - name: Reset to commit
+        if: ${{inputs.resetTo}}
+        run: git reset ${{inputs.resetTo}}
+
+      - name: Setup Node.js environment
+        uses: actions/setup-node@v4.0.2
+        with:
+          # File containing the version Spec of the version to use.  Examples: .nvmrc, .node-version, .tool-versions.
+          # If node-version and node-version-file are both provided the action will use version from node-version.
+          # node-version-file: ".nvmrc"
+          # Version Spec of the version to use. Examples: 12.x, 10.15.1, >=10.15.0.
+          node-version: ${{ steps.get_node_version.outputs.node_version }}
+
+      - name: Get yarn cache directory path
+        id: yarn-cache-dir-path
+        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
+
+      - uses: actions/cache@v4.0.0
+        id: yarn-cache # use this to check for `cache-hit` (`steps.yarn-cache.outputs.cache-hit != 'true'`)
+        with:
+          path: |
+            ${{steps.yarn-cache-dir-path.outputs.dir}}
+            '../alpine-**'
+            '../aarch64-linux-debian'
+
+          key: ${{runner.os}}-${{matrix.tasks}}-${{hashFiles('**/yarn.lock')}}
+          restore-keys: |
+            ${{runner.os}}-${{matrix.tasks}}-${{hashFiles('**/yarn.lock')}}
+            ${{runner.os}}-${{matrix.tasks}}-
+
+      - name: Build ${{matrix.tasks}}
+        run: |
+          build_task() {
+            task="$1"
+            OUTPUT_DIR="${PWD}/../$(echo ${task} | sed 's/-min//')"
+
+            ## Electron and browsers are not required
+            ## for code-server build.
+            export ELECTRON_SKIP_BINARY_DOWNLOAD=1
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            serverApplicationName=$(grep serverApplicationName <product.json | grep -o ":.*" | grep -o "\".*\"" | sed "s^\"^^g")
+
+            yarn_build() {
+              ## Fix ../src/unix/kerberos_gss.h:21:14: fatal error: gssapi/gssapi.h: No such file or directory
+              ## Introduced in Commit: cf7ddbb51d0eaaed6dc25d2df137594254f3b790
+              export VSCODE_REMOTE_CC="${CC}"
+              export VSCODE_REMOTE_CXX="${CXX}"
+
+              yarn
+              yarn gulp "${task}"
+
+              ## Fix android mobile css
+              sed -i 's^\t<link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css">^\t<!-- <link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css"> -->^' "${OUTPUT_DIR}/out/vs/code/browser/workbench/workbench.html"
+            }
+
+            ## Skip check introduced in v1.86.0
+            skip_check() {
+              sed -i "s/skip_check=0/skip_check=1/" "${OUTPUT_DIR}/bin/${serverApplicationName}"
+            }
+
+            sudo apt update
+            sudo apt install build-essential python-is-python3
+            yarn global add node-gyp
+
+            node -e 'console.log(process.version, process.arch, process.platform)'
+
+            case "${task}" in
+            vscode-web | vscode-web-min | vscode-reh-web-linux-x64*)
+              sudo apt install g++ libx11-dev libxkbfile-dev libsecret-1-dev libkrb5-dev
+
+              yarn_build
+
+              case "${task}" in vscode-web*)
+                cat ../vscode-web/out/vs/code/browser/workbench/workbench.html |
+                  sed 's^{{WORKBENCH_WEB_BASE_URL}}/resources/server^.^g' |
+                  sed 's/{{WORKBENCH_WEB_BASE_URL}}/./g' |
+                  sed 's/{{WORKBENCH_WEB_CONFIGURATION}}/{}/g' >../vscode-web/index.html
+                ;;
+              esac
+              ;;
+            vscode-reh-web-linux-arm64*)
+              TARGET=aarch64-linux-gnu
+              export npm_config_arch=arm64
+
+              echo "Setting up sysroot..."
+              sudo apt install qemu-user-static binfmt-support debootstrap
+              SYSROOT="${PWD}/../aarch64-linux-debian"
+              if ! test -d "${SYSROOT}"; then
+                sudo debootstrap --variant=minbase --arch=arm64 --include="libx11-dev,libxkbfile-dev,libsecret-1-dev,libkrb5-dev" stable "${SYSROOT}" http://deb.debian.org/debian/
+              # sudo debootstrap --variant=minbase --arch=arm64 --include="libx11-dev,libxkbfile-dev,libsecret-1-dev,libkrb5-dev" stable "${SYSROOT}" https://mirrors.ustc.edu.cn/debian/
+              fi
+
+              echo "Setting up toolchain..."
+              sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+              export CC="${TARGET}-gcc --sysroot=${SYSROOT}"
+              export CXX="${TARGET}-g++ --sysroot=${SYSROOT}"
+
+              yarn_build
+              ;;
+            vscode-reh-web-android-arm64*)
+              ## Modify based on linux-arm64
+              (build_task "$(echo "${task}" | sed 's/android/linux/')")
+
+              export npm_config_arch=arm64
+              TARGET=aarch64-linux-android24
+
+              echo "Replacing modules for android..."
+              mv "${PWD}/../vscode-reh-web-linux-arm64" "${OUTPUT_DIR}"
+              export GYP_DEFINES="host_os=linux OS=android"
+
+              ## Android libutil
+              _TMP_BUILD_DIR="${PWD}/../tmp_build"
+              mkdir -p "${_TMP_BUILD_DIR}/lib"
+              echo "INPUT(-lc)" >"${_TMP_BUILD_DIR}/lib/libutil.so"
+              NDK_BIN_DIR=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin
+              NDK_BIN_DIR=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64/bin
+              export CC="${NDK_BIN_DIR}/clang++ --target=${TARGET}"
+              export CXX="${NDK_BIN_DIR}/clang++ --target=${TARGET} -L${_TMP_BUILD_DIR}/lib"
+
+              replace_watcher() {
+                (
+                  dir=$(find "$1" -name "watcher" -path "*/node_modules/@parcel/watcher")
+                  test $? -ne 0 && exit 1
+                  echo "replacing watcher (${dir})"
+                  cd "${dir}/.."
+                  curl -Lks https://registry.npmjs.org/@parcel/watcher-android-arm64/-/watcher-android-arm64-2.3.0.tgz | gzip -d | tar -x
+                  # curl -Lks https://registry.npmmirror.com/@parcel/watcher-android-arm64/-/watcher-android-arm64-2.3.0.tgz | gzip -d | tar -x
+                  rm -rf watcher
+                  mv package watcher
+                )
+              }
+
+              replace_in_dir() {
+                shift
+                echo "Replacing modules..."
+                for module_name in "$@"; do
+                  find "${OUTPUT_DIR}" \( -path "*/node_modules/${module_name}" -or -path "*/node_modules/@*/${module_name}" \) -prune | while IFS= read -r module_dir; do
+                    echo "replacing ${module_name} (${module_dir})"
+                    if test -d "${_TMP_BUILD_DIR}/node_modules/${module_name}"; then
+                      rm -rf "${module_dir}" && cp -r "${_TMP_BUILD_DIR}/node_modules/${module_name}" "$(dirname "${module_dir}")"
+                    else
+                      echo "Warn: ${_TMP_BUILD_DIR}/node_modules/${module_name} not exists!"
+                    fi
+                  done
+                done
+              }
+
+              replace_node() {
+                echo "Replacing node..."
+                node_version="$(node -v)"
+                node_url=https://github.com/zongou/actions/releases/download/nodejs/nodejs-${node_version}-android-arm64.tar.xz
+                curl -Lk "${node_url}" | xz -T0 -d | tar -x "nodejs-${node_version}-android-arm64/bin/node" -O >"${OUTPUT_DIR}/node"
+                chmod +x "${OUTPUT_DIR}/node"
+              }
+
+              ## Build modules
+              (cd "${_TMP_BUILD_DIR}" && yarn add @vscode/spdlog node-pty native-watchdog)
+              replace_in_dir "${OUTPUT_DIR}" @vscode/spdlog node-pty native-watchdog
+              replace_watcher "${OUTPUT_DIR}"
+              replace_node "${OUTPUT_DIR}"
+
+              ## Fake android as linux to install online extensions
+              sed -i "10aexport NODE_OPTIONS=\"--require \$ROOT/out/android-as-linux.js\"" "${OUTPUT_DIR}/bin/${serverApplicationName}"
+              echo 'Object.defineProperty(process, "platform", { get() { return "linux"; } });' >"${OUTPUT_DIR}/out/android-as-linux.js"
+
+              skip_check
+              ;;
+            vscode-reh-web-alpine-arm64* | vscode-reh-web-linux-alpine*)
+              sudo apt install qemu-user-static binfmt-support
+              case "${task}" in
+              vscode-reh-web-alpine-arm64*)
+                ARCH=aarch64
+                export npm_config_arch=arm64
+                ;;
+              vscode-reh-web-linux-alpine*)
+                ARCH=x86_64
+                export npm_config_arch=${ARCH}
+                ;;
+              esac
+
+              TARGET=${ARCH}-linux-musl
+
+              echo "Setting up sysroot"
+              sudo apt install qemu-user-static binfmt-support
+              sudo update-binfmts --enable qemu-aarch64
+              SYSROOT="${PWD}/../${ARCH}-alpine"
+              export PKG_CONFIG_PATH="${SYSROOT}/usr/lib/pkgconfig"
+              if ! test -d "${SYSROOT}"; then
+                mkdir -p "${SYSROOT}"
+                curl -Lk "https://dl-cdn.alpinelinux.org/alpine/v3.19/releases/${ARCH}/alpine-minirootfs-3.19.1-${ARCH}.tar.gz" | gzip -d | tar -C "${SYSROOT}" -x
+
+                cat <<EOF >"${SYSROOT}/etc/resolv.conf"
+          nameserver 8.8.8.8
+          nameserver 8.8.4.4
+          EOF
+                # sudo chroot "${SYSROOT}" sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
+                sudo chroot "${SYSROOT}" apk add libx11-dev libxkbfile-dev libsecret-dev krb5-dev libstdc++
+              fi
+
+              echo "Setting up toolchain"
+              TOOLCHAIN=${PWD}/../${TARGET}-cross
+              if ! test -d "${TOOLCHAIN}"; then
+                curl -Lk "https://musl.cc/${TARGET}-cross.tgz" | gzip -d | tar -C "$(dirname "${TOOLCHAIN}")" -x
+              fi
+
+              case "${ARCH}" in
+              x86_64) cp "$(command -v ld)" "${TOOLCHAIN}/bin/${TARGET}-ld" ;;
+              esac
+
+              export CC="${TOOLCHAIN}/bin/${TARGET}-gcc --sysroot=${SYSROOT}"
+              export CXX="${TOOLCHAIN}/bin/${TARGET}-g++ --sysroot=${SYSROOT}"
+
+              yarn_build
+              skip_check
+              ;;
+            vscode-web-min*)
+              yarn
+              yarn gulp vscode-web-min
+              ;;
+            esac
+          }
+
+          build_task "${{matrix.tasks}}"
+
+      - name: Package output
+        run: tar -C "${GITHUB_WORKSPACE}/../" -c "$(echo ${{matrix.tasks}} | sed 's/-min//')" | xz -T0 > "${{matrix.tasks}}.tar.xz"
+
+      - name: Get version
+        id: get-version
+        run: echo "version=$(cat package.json | grep "\"version\":" | grep -E -o -e '[0-9]+.[0-9]+.[0-9]+')" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload to release
+        uses: ncipollo/release-action@v1.14.0
+        with:
+          prerelease: ${{!github.event.workflow}}
+          tag: "${{steps.get-version.outputs.version}}"
+          artifacts: |
+            ${{matrix.tasks}}.tar.xz
+          allowUpdates: true
+          replacesArtifacts: true
+          body: |
+            [action](${{github.server_url}}/${{github.repository}}/actions/runs/${{github.run_id}})

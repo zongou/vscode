@@ -1,3 +1,1 @@
-# What is this branch for?
-
-This branch is only for storing our build action and docs.
+# This branch is building code-server.
