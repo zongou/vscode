@@ -92,7 +92,7 @@ jobs:
             ## for code-server build.
             export ELECTRON_SKIP_BINARY_DOWNLOAD=1
             export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-            export npm_config_nodedir=$(realpath  $(dirname $(command -v node))/../include))
+            export npm_config_nodedir=$(realpath $(dirname $(command -v node))/../include)
             serverApplicationName=$(grep serverApplicationName <product.json | grep -o ":.*" | grep -o "\".*\"" | sed "s^\"^^g")
 
             yarn_build() {
