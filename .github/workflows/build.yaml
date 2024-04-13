@@ -100,8 +100,8 @@ jobs:
               export VSCODE_REMOTE_CC="${CC}"
               export VSCODE_REMOTE_CXX="${CXX}"
 
-              yarn || yarn || yarn
-              yarn gulp "${task}"
+              yarn
+              yarn gulp "${task}" || yarn gulp "${task}" || yarn gulp "${task}"
 
               ## Fix android mobile css
               sed -i 's^\t<link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css">^\t<!-- <link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css"> -->^' "${OUTPUT_DIR}/out/vs/code/browser/workbench/workbench.html"
