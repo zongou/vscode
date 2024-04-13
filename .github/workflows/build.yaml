@@ -100,7 +100,7 @@ jobs:
               export VSCODE_REMOTE_CC="${CC}"
               export VSCODE_REMOTE_CXX="${CXX}"
 
-              yarn
+              yarn || yarn || yarn
               yarn gulp "${task}"
 
               ## Fix android mobile css
