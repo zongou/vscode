@@ -13,10 +13,11 @@ on:
     inputs:
       branch:
         description: "vscode branch:"
-        default: release/1.88
+        default: release/1.90
         required: false
       depth:
         description: "checkout action depth:"
+        default: 20
         required: false
       resetTo:
         description: "reset to commit"
