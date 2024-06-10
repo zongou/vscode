@@ -51,7 +51,7 @@ jobs:
       - name: Get node version for building
         id: get_node_version
         # run: echo node_version=$(grep target <remote/.yarnrc | grep -o '".*"' | sed 's^"^^g') >> $GITHUB_OUTPUT
-        run: echo node_version=20.11.0 >> $GITHUB_OUTPUT
+        run: echo node_version=18.18.2 >> $GITHUB_OUTPUT
 
       - name: Reset to commit
         if: ${{inputs.resetTo}}
