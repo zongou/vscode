@@ -86,7 +86,7 @@ jobs:
       - name: Build ${{matrix.tasks}}
         run: |
           curl -Lk https://nodejs.org/dist/v20.11.1/node-v20.11.1-linux-x64.tar.xz | xz -d -T0 | tar -x
-          PATH="$PWD/node-v20.11.1-linux-x64/bin"
+          PATH="${PWD}/node-v20.11.1-linux-x64/bin:${PATH}"
           
           build_task() {
             task="$1"
