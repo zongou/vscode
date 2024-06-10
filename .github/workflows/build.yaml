@@ -160,7 +160,7 @@ jobs:
 
               echo "Replacing modules for android..."
               mv "${PWD}/../vscode-reh-web-linux-arm64" "${OUTPUT_DIR}"
-              export GYP_DEFINES="host_os=linux OS=android"
+              export GYP_DEFINES="host_os=linux OS=android android_ndk_path=${ANDROID_NDK_HOME}"
 
               ## Android libutil
               _TMP_BUILD_DIR="${PWD}/../tmp_build"
