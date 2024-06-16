@@ -102,7 +102,6 @@ jobs:
               export VSCODE_REMOTE_CXX="${CXX}"
 
               yarn
-              yarn gulp bundle-extensions-build
               yarn gulp "${task}" || yarn gulp "${task}" || yarn gulp "${task}"
 
               ## Fix android mobile css
