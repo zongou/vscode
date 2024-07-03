@@ -124,6 +124,10 @@ class ActionWidgetService extends Disposable implements IActionWidgetService {
 		renderDisposables.add(dom.addDisposableListener(pointerBlock, dom.EventType.POINTER_MOVE, () => pointerBlock.remove()));
 		renderDisposables.add(dom.addDisposableListener(pointerBlock, dom.EventType.MOUSE_DOWN, () => pointerBlock.remove()));
 
+		// Removes block on touchstart INSIDE widget or ANY touch movement
+		renderDisposables.add(dom.addDisposableListener(pointerBlock, dom.EventType.TOUCH_MOVE, () => pointerBlock.remove()));
+		renderDisposables.add(dom.addDisposableListener(pointerBlock, dom.EventType.TOUCH_START, () => pointerBlock.remove()));
+
 		// Action bar
 		let actionBarWidth = 0;
 		if (actionBarActions.length) {

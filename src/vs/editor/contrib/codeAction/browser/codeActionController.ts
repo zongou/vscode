@@ -40,6 +40,7 @@ import { CodeActionAutoApply, CodeActionFilter, CodeActionItem, CodeActionKind, 
 import { CodeActionModel, CodeActionsState } from './codeActionModel.js';
 import { HierarchicalKind } from '../../../../base/common/hierarchicalKind.js';
 import { ITelemetryService } from '../../../../platform/telemetry/common/telemetry.js';
+import { isAndroid } from '../../../../base/browser/browser.js';
 
 interface IActionShowOptions {
 	readonly includeDisabledActions?: boolean;
@@ -98,7 +99,9 @@ export class CodeActionController extends Disposable implements IEditorContribut
 
 		this._resolver = instantiationService.createInstance(CodeActionKeybindingResolver);
 
-		this._register(this._editor.onDidLayoutChange(() => this._actionWidgetService.hide()));
+		if (!isAndroid) {
+			this._register(this._editor.onDidLayoutChange(() => this._actionWidgetService.hide()));
+		}
 	}
 
 	override dispose() {
