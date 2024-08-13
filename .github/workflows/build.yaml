@@ -127,9 +127,11 @@ jobs:
               yarn_build
               case "${task}" in vscode-web*)
                 cat ../vscode-web/out/vs/code/browser/workbench/workbench.html |
-                  sed 's^{{WORKBENCH_WEB_BASE_URL}}/resources/server^.^g' |
-                  sed 's/{{WORKBENCH_WEB_BASE_URL}}/./g' |
-                  sed 's/{{WORKBENCH_WEB_CONFIGURATION}}/{}/g' >../vscode-web/index.html
+                  	sed 's^{{WORKBENCH_WEB_BASE_URL}}/resources/server^^g' |
+                    sed 's^{{WORKBENCH_WEB_BASE_URL}}^^g' |
+                    sed 's^{{WORKBENCH_WEB_CONFIGURATION}}^{}^g' |
+                    sed 's^{{WORKBENCH_NLS_FALLBACK_URL}}^/out/nls.messages.js^g' |
+                    sed 's^{{WORKBENCH_NLS_URL}}^/out/vs/workbench/workbench.web.main.nls.js^g' >../vscode-web/index.html
                 ;;
               esac
               ;;
