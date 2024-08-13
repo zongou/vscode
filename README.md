@@ -1,3 +1,4 @@
-# What is this branch for?
+# Notice
 
-This branch is only for storing our build action and docs.
+This branch is for building code-server  
+Please switch branch to release/\*
