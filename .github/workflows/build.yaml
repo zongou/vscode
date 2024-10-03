@@ -1,3 +1,4 @@
+# https://github.com/microsoft/vscode/wiki/How-to-Contribute
 name: Build vscode server
 run-name: Build vscode server ${{github.event.inputs.branch}}
 on:
@@ -13,7 +14,7 @@ on:
     inputs:
       branch:
         description: "vscode branch:"
-        default: release/1.93
+        default: release/1.94
         required: false
       depth:
         description: "checkout action depth:"
@@ -21,7 +22,7 @@ on:
         required: false
       resetTo:
         description: "reset to commit"
-        default: 4849ca9bdf9666755eb463db297b69e5385090e3
+        default: d78a74bcdfad14d5d3b1b782f87255d802b57511
         required: false
 
 permissions:
@@ -50,13 +51,13 @@ jobs:
           ref: ${{inputs.branch}}
           fetch-depth: ${{inputs.depth||'1'}}
 
-      - name: Get node version for building
-        id: get_node_version
-        run: echo node_version=$(grep target <remote/.yarnrc | grep -o '".*"' | sed 's^"^^g') >> $GITHUB_OUTPUT
-
       - name: Reset to commit
         if: ${{inputs.resetTo}}
         run: git reset ${{inputs.resetTo}}
+
+      - name: Get node version for building
+        id: get_node_version
+        run: echo node_version=$(grep target < remote/.npmrc | grep -o '".*"' | sed 's^"^^g') >> $GITHUB_OUTPUT
 
       - name: Setup Node.js environment
         uses: actions/setup-node@v4.0.2
@@ -67,24 +68,21 @@ jobs:
           # Version Spec of the version to use. Examples: 12.x, 10.15.1, >=10.15.0.
           node-version: ${{ steps.get_node_version.outputs.node_version }}
 
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: echo "dir=$(yarn cache dir)" >> $GITHUB_OUTPUT
+      - name: Get npm cache directory path
+        id: npm-cache-dir-path
+        run: echo "dir=$(npm config get cache)" >> $GITHUB_OUTPUT
 
       - uses: actions/cache@v4.0.0
-        id: yarn-cache # use this to check for `cache-hit` (`steps.yarn-cache.outputs.cache-hit != 'true'`)
+        id: npm-cache # use this to check for `cache-hit` (`steps.npm-cache.outputs.cache-hit != 'true'`)
         with:
           path: |
-            ${{steps.yarn-cache-dir-path.outputs.dir}}
+            ${{steps.npm-cache-dir-path.outputs.dir}}
             '../alpine-**'
             '../aarch64-linux-debian'
-          key: ${{runner.os}}-${{matrix.tasks}}-${{hashFiles('**/yarn.lock')}}
+          key: ${{runner.os}}-${{matrix.tasks}}-${{hashFiles('**/npm.lock')}}
           restore-keys: |
-            ${{runner.os}}-${{matrix.tasks}}-${{hashFiles('**/yarn.lock')}}
+            ${{runner.os}}-${{matrix.tasks}}-${{hashFiles('**/npm.lock')}}
             ${{runner.os}}-${{matrix.tasks}}-
-
-      - name: Set proper node version in yarnrc
-        run: node build/npm/setupBuildYarnrc
 
       - name: Build ${{matrix.tasks}}
         run: |
@@ -96,7 +94,7 @@ jobs:
             export ELECTRON_SKIP_BINARY_DOWNLOAD=1
             export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
             serverApplicationName=$(grep serverApplicationName <product.json | grep -o ":.*" | grep -o "\".*\"" | sed "s^\"^^g")
-            yarn_build() {
+            npm_build() {
               ## Fix ../src/unix/kerberos_gss.h:21:14: fatal error: gssapi/gssapi.h: No such file or directory
               ## Introduced in Commit: cf7ddbb51d0eaaed6dc25d2df137594254f3b790
               export VSCODE_REMOTE_CC="${CC}"
@@ -105,13 +103,13 @@ jobs:
               ## In case of issues
               rm -rf ~/.node-gyp
               rm -rf ~/.cache/node-gyp
-              # yarn cache clean
+              # npm cache clean
               
-              yarn
-              while true; do yarn list --prod --json && break; done
-              while true; do yarn gulp "${task}" && break; done
+              npm install
+              while true; do npm list --prod --json && break; done
+              while true; do npm run gulp "${task}" && break; done
               ## Fix android mobile css
-              sed -i 's^\t<link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css">^\t<!-- <link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css"> -->^' "${OUTPUT_DIR}/out/vs/code/browser/workbench/workbench.html"
+              # sed -i 's^\t<link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css">^\t<!-- <link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css"> -->^' "${OUTPUT_DIR}/out/vs/code/browser/workbench/workbench.html"
             }
             ## Skip check introduced in v1.86.0
             skip_check() {
@@ -119,21 +117,21 @@ jobs:
             }
             sudo apt update
             sudo apt install build-essential python-is-python3
-            yarn global add node-gyp
+            npm install -g node-gyp
             node -e 'console.log(process.version, process.arch, process.platform)'
             case "${task}" in
             vscode-web | vscode-web-min | vscode-reh-web-linux-x64*)
               sudo apt install g++ libx11-dev libxkbfile-dev libsecret-1-dev libkrb5-dev
-              yarn_build
-              case "${task}" in vscode-web*)
-                cat ../vscode-web/out/vs/code/browser/workbench/workbench.html |
-                  	sed 's^{{WORKBENCH_WEB_BASE_URL}}/resources/server^^g' |
-                    sed 's^{{WORKBENCH_WEB_BASE_URL}}^^g' |
-                    sed 's^{{WORKBENCH_WEB_CONFIGURATION}}^{}^g' |
-                    sed 's^{{WORKBENCH_NLS_FALLBACK_URL}}^/out/nls.messages.js^g' |
-                    sed 's^{{WORKBENCH_NLS_URL}}^/out/vs/workbench/workbench.web.main.nls.js^g' >../vscode-web/index.html
-                ;;
-              esac
+              npm_build
+              # case "${task}" in vscode-web*)
+              #   cat ../vscode-web/out/vs/code/browser/workbench/workbench.html |
+              #     	sed 's^{{WORKBENCH_WEB_BASE_URL}}/resources/server^^g' |
+              #       sed 's^{{WORKBENCH_WEB_BASE_URL}}^^g' |
+              #       sed 's^{{WORKBENCH_WEB_CONFIGURATION}}^{}^g' |
+              #       sed 's^{{WORKBENCH_NLS_FALLBACK_URL}}^/out/nls.messages.js^g' |
+              #       sed 's^{{WORKBENCH_NLS_URL}}^/out/vs/workbench/workbench.web.main.nls.js^g' >../vscode-web/index.html
+              #   ;;
+              # esac
               ;;
             vscode-reh-web-linux-arm64*)
               TARGET=aarch64-linux-gnu
@@ -149,7 +147,7 @@ jobs:
               sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
               export CC="${TARGET}-gcc --sysroot=${SYSROOT}"
               export CXX="${TARGET}-g++ --sysroot=${SYSROOT}"
-              yarn_build
+              npm_build
               ;;
             vscode-reh-web-android-arm64*)
               ## Modify based on linux-arm64
@@ -172,11 +170,9 @@ jobs:
                   dir=$(find "$1" -name "watcher" -path "*/node_modules/@parcel/watcher")
                   test $? -ne 0 && exit 1
                   echo "replacing watcher (${dir})"
-                  cd "${dir}/.."
-                  curl -Lks https://registry.npmjs.org/@parcel/watcher-android-arm64/-/watcher-android-arm64-2.3.0.tgz | gzip -d | tar -x
-                  # curl -Lks https://registry.npmmirror.com/@parcel/watcher-android-arm64/-/watcher-android-arm64-2.3.0.tgz | gzip -d | tar -x
-                  rm -rf watcher
-                  mv package watcher
+                  pkg_url="https://registry.npmjs.org/@parcel/watcher-android-arm64/-/watcher-android-arm64-2.3.0.tgz"
+                  curl -Lks "${pkg_url}" | gzip -d | tar -x package/watcher.node -O > "${dir}/build/Release/watcher.node"
+                  chmod 0775 "${dir}/build/Release/watcher.node"
                 )
               }
               replace_in_dir() {
@@ -201,13 +197,13 @@ jobs:
                 chmod +x "${OUTPUT_DIR}/node"
               }
               ## Build modules
-              (cd "${_TMP_BUILD_DIR}" && yarn add @vscode/spdlog node-pty native-watchdog)
+              (cd "${_TMP_BUILD_DIR}" && npm add @vscode/spdlog node-pty native-watchdog)
               replace_in_dir "${OUTPUT_DIR}" @vscode/spdlog node-pty native-watchdog
               replace_watcher "${OUTPUT_DIR}"
               replace_node "${OUTPUT_DIR}"
               ## Fake android as linux to install online extensions
-              sed -i "10aexport NODE_OPTIONS=\"--require \$ROOT/out/android-as-linux.js\"" "${OUTPUT_DIR}/bin/${serverApplicationName}"
-              echo 'Object.defineProperty(process, "platform", { get() { return "linux"; } });' >"${OUTPUT_DIR}/out/android-as-linux.js"
+              sed -i "10aexport NODE_OPTIONS=\"--require \$ROOT/out/android-as-linux.cjs\"" "${OUTPUT_DIR}/bin/${serverApplicationName}"
+              echo 'Object.defineProperty(process, "platform", { get() { return "linux"; } });' >"${OUTPUT_DIR}/out/android-as-linux.cjs"
               skip_check
               ;;
             vscode-reh-web-alpine-arm64* | vscode-reh-web-linux-alpine*)
@@ -248,12 +244,12 @@ jobs:
               esac
               export CC="${TOOLCHAIN}/bin/${TARGET}-gcc --sysroot=${SYSROOT}"
               export CXX="${TOOLCHAIN}/bin/${TARGET}-g++ --sysroot=${SYSROOT}"
-              yarn_build
+              npm_build
               skip_check
               ;;
             vscode-web-min*)
-              yarn
-              yarn gulp vscode-web-min
+              npm
+              npm gulp vscode-web-min
               ;;
             esac
           }
