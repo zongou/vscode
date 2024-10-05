@@ -203,7 +203,9 @@ jobs:
               replace_node "${OUTPUT_DIR}"
               ## Fake android as linux to install online extensions
               sed -i "10aexport NODE_OPTIONS=\"--require \$ROOT/out/android-as-linux.cjs\"" "${OUTPUT_DIR}/bin/${serverApplicationName}"
-              echo 'Object.defineProperty(process, "platform", { get() { return "linux"; } });' >"${OUTPUT_DIR}/out/android-as-linux.cjs"
+              cat <<EOF >"${OUTPUT_DIR}/out/android-as-linux.cjs"
+          Object.defineProperty(process, 'platform', {...Reflect.getOwnPropertyDescriptor(process, 'platform'), value: 'linux'});
+          EOF
               skip_check
               ;;
             vscode-reh-web-alpine-arm64* | vscode-reh-web-linux-alpine*)
