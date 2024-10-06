@@ -83,7 +83,6 @@ jobs:
           restore-keys: |
             ${{runner.os}}-${{matrix.tasks}}-${{hashFiles('**/npm.lock')}}
             ${{runner.os}}-${{matrix.tasks}}-
-
       - name: Build ${{matrix.tasks}}
         run: |
           build_task() {
@@ -97,23 +96,15 @@ jobs:
             npm_build() {
               ## Fix ../src/unix/kerberos_gss.h:21:14: fatal error: gssapi/gssapi.h: No such file or directory
               ## Introduced in Commit: cf7ddbb51d0eaaed6dc25d2df137594254f3b790
-              export VSCODE_REMOTE_CC="${CC}"
-              export VSCODE_REMOTE_CXX="${CXX}"
-
+              export VSCODE_REMOTE_CC="${CC-}"
+              export VSCODE_REMOTE_CXX="${CXX-}"
               ## In case of issues
               rm -rf ~/.node-gyp
               rm -rf ~/.cache/node-gyp
               # npm cache clean
               
               npm install
-              while true; do npm list --prod --json && break; done
-              while true; do npm run gulp "${task}" && break; done
-              ## Fix android mobile css
-              # sed -i 's^\t<link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css">^\t<!-- <link data-name="vs/workbench/workbench.web.main" rel="stylesheet" href="{{WORKBENCH_WEB_BASE_URL}}/out/vs/workbench/workbench.web.main.css"> -->^' "${OUTPUT_DIR}/out/vs/code/browser/workbench/workbench.html"
-            }
-            ## Skip check introduced in v1.86.0
-            skip_check() {
-              sed -i "s/skip_check=0/skip_check=1/" "${OUTPUT_DIR}/bin/${serverApplicationName}"
+              npm run gulp "${task}"
             }
             sudo apt update
             sudo apt install build-essential python-is-python3
@@ -206,7 +197,6 @@ jobs:
               cat <<EOF >"${OUTPUT_DIR}/out/android-as-linux.cjs"
           Object.defineProperty(process, 'platform', {...Reflect.getOwnPropertyDescriptor(process, 'platform'), value: 'linux'});
           EOF
-              skip_check
               ;;
             vscode-reh-web-alpine-arm64* | vscode-reh-web-linux-alpine*)
               sudo apt install qemu-user-static binfmt-support
@@ -247,7 +237,6 @@ jobs:
               export CC="${TOOLCHAIN}/bin/${TARGET}-gcc --sysroot=${SYSROOT}"
               export CXX="${TOOLCHAIN}/bin/${TARGET}-g++ --sysroot=${SYSROOT}"
               npm_build
-              skip_check
               ;;
             vscode-web-min*)
               npm
