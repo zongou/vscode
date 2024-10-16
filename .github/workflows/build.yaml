@@ -137,6 +137,7 @@ jobs:
               fi
               echo "Setting up toolchain..."
               sudo apt install gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+              export PKG_CONFIG_PATH="${SYSROOT}/usr/share/pkgconfig:${SYSROOT}/usr/lib/aarch64-linux-gnu/pkgconfig"
               export CC="${TARGET}-gcc --sysroot=${SYSROOT}"
               export CXX="${TARGET}-g++ --sysroot=${SYSROOT}"
               npm_build
