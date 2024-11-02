@@ -53,7 +53,9 @@ jobs:
 
       - name: Reset to commit
         if: ${{inputs.resetTo}}
-        run: git reset ${{inputs.resetTo}}
+        run: |
+          git reset ${{inputs.resetTo}}
+          git checkout ${{inputs.resetTo}} package.json
 
       - name: Get node version for building
         id: get_node_version
