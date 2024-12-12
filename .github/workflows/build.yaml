@@ -14,7 +14,7 @@ on:
     inputs:
       branch:
         description: "vscode branch:"
-        default: release/1.95
+        default: release/1.96
         required: false
       depth:
         description: "checkout action depth:"
@@ -22,7 +22,7 @@ on:
         required: false
       resetTo:
         description: "reset to commit"
-        default: 65edc4939843c90c34d61f4ce11704f09d3e5cb6
+        default: 138f619c86f1199955d53b4166bef66ef252935c
         required: false
 
 permissions:
