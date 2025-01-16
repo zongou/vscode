@@ -26,7 +26,6 @@ import { IConfigurationService } from '../../../../platform/configuration/common
 import { ContextKeyExpr, IContextKeyService } from '../../../../platform/contextkey/common/contextkey.js';
 import { IContextMenuService } from '../../../../platform/contextview/browser/contextView.js';
 import { IDialogService } from '../../../../platform/dialogs/common/dialogs.js';
-import { IExtensionManagementService } from '../../../../platform/extensionManagement/common/extensionManagement.js';
 import { ExtensionIdentifier } from '../../../../platform/extensions/common/extensions.js';
 import { IInstantiationService } from '../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../platform/log/common/log.js';
@@ -59,6 +58,7 @@ import { mainWindow } from '../../../../base/browser/window.js';
 import { IOpenerService } from '../../../../platform/opener/common/opener.js';
 import { URI } from '../../../../base/common/uri.js';
 import { IHostService } from '../../../services/host/browser/host.js';
+import Severity from '../../../../base/common/severity.js';
 
 const defaultChat = {
 	extensionId: product.defaultChatAgent?.extensionId ?? '',
@@ -69,7 +69,7 @@ const defaultChat = {
 	skusDocumentationUrl: product.defaultChatAgent?.skusDocumentationUrl ?? '',
 	publicCodeMatchesUrl: product.defaultChatAgent?.publicCodeMatchesUrl ?? '',
 	upgradePlanUrl: product.defaultChatAgent?.upgradePlanUrl ?? '',
-	providerId: product.defaultChatAgent?.providerId ?? '',
+	providerIds: [product.defaultChatAgent?.providerId ?? '', 'github-enterprise'],
 	providerName: product.defaultChatAgent?.providerName ?? '',
 	providerScopes: product.defaultChatAgent?.providerScopes ?? [[]],
 	entitlementUrl: product.defaultChatAgent?.entitlementUrl ?? '',
@@ -365,6 +365,9 @@ class ChatSetupRequests extends Disposable {
 		@ILogService private readonly logService: ILogService,
 		@IRequestService private readonly requestService: IRequestService,
 		@IChatQuotasService private readonly chatQuotasService: IChatQuotasService,
+		@IDialogService private readonly dialogService: IDialogService,
+		@IOpenerService private readonly openerService: IOpenerService,
+		@IConfigurationService private readonly configurationService: IConfigurationService
 	) {
 		super();
 
@@ -377,19 +380,19 @@ class ChatSetupRequests extends Disposable {
 		this._register(this.authenticationService.onDidChangeDeclaredProviders(() => this.resolve()));
 
 		this._register(this.authenticationService.onDidChangeSessions(e => {
-			if (e.providerId === defaultChat.providerId) {
+			if (defaultChat.providerIds.includes(e.providerId)) {
 				this.resolve();
 			}
 		}));
 
 		this._register(this.authenticationService.onDidRegisterAuthenticationProvider(e => {
-			if (e.id === defaultChat.providerId) {
+			if (defaultChat.providerIds.includes(e.id)) {
 				this.resolve();
 			}
 		}));
 
 		this._register(this.authenticationService.onDidUnregisterAuthenticationProvider(e => {
-			if (e.id === defaultChat.providerId) {
+			if (defaultChat.providerIds.includes(e.id)) {
 				this.resolve();
 			}
 		}));
@@ -436,9 +439,20 @@ class ChatSetupRequests extends Disposable {
 	}
 
 	private async findMatchingProviderSession(token: CancellationToken): Promise<AuthenticationSession | undefined> {
-		const sessions = await this.authenticationService.getSessions(defaultChat.providerId);
-		if (token.isCancellationRequested) {
-			return undefined;
+		let sessions: ReadonlyArray<AuthenticationSession> = [];
+		const authProviderConfigValue = this.configurationService.getValue<string | undefined>('github.copilot.advanced.authProvider');
+		if (authProviderConfigValue) {
+			sessions = await this.authenticationService.getSessions(authProviderConfigValue);
+		} else {
+			for (const providerId of defaultChat.providerIds) {
+				if (token.isCancellationRequested) {
+					return undefined;
+				}
+				sessions = await this.authenticationService.getSessions(providerId);
+				if (sessions.length) {
+					break;
+				}
+			}
 		}
 
 		for (const session of sessions) {
@@ -486,7 +500,12 @@ class ChatSetupRequests extends Disposable {
 			return { entitlement: ChatEntitlement.Unresolved };
 		}
 
-		const responseText = await asText(response);
+		let responseText: string | null = null;
+		try {
+			responseText = await asText(response);
+		} catch (error) {
+			// ignore - handled below
+		}
 		if (token.isCancellationRequested) {
 			return undefined;
 		}
@@ -589,18 +608,38 @@ class ChatSetupRequests extends Disposable {
 
 		const response = await this.request(defaultChat.entitlementSignupLimitedUrl, 'POST', body, session, CancellationToken.None);
 		if (!response) {
-			this.logService.error('[chat setup] sign-up: no response');
+			this.onUnknownSignUpError('[chat setup] sign-up: no response');
 			return false;
 		}
 
 		if (response.res.statusCode && response.res.statusCode !== 200) {
-			this.logService.error(`[chat setup] sign-up: unexpected status code ${response.res.statusCode}`);
+			if (response.res.statusCode === 422) {
+				try {
+					const responseText = await asText(response);
+					if (responseText) {
+						const responseError: { message: string } = JSON.parse(responseText);
+						if (typeof responseError.message === 'string' && responseError.message) {
+							this.onUnprocessableSignUpError(`[chat setup] sign-up: unprocessable entity (${responseError.message})`, responseError.message);
+							return false;
+						}
+					}
+				} catch (error) {
+					// ignore - handled below
+				}
+			}
+			this.onUnknownSignUpError(`[chat setup] sign-up: unexpected status code ${response.res.statusCode}`);
 			return false;
 		}
 
-		const responseText = await asText(response);
+		let responseText: string | null = null;
+		try {
+			responseText = await asText(response);
+		} catch (error) {
+			// ignore - handled below
+		}
+
 		if (!responseText) {
-			this.logService.error('[chat setup] sign-up: response has no content');
+			this.onUnknownSignUpError('[chat setup] sign-up: response has no content');
 			return false;
 		}
 
@@ -609,7 +648,7 @@ class ChatSetupRequests extends Disposable {
 			parsedResult = JSON.parse(responseText);
 			this.logService.trace(`[chat setup] sign-up: response is ${responseText}`);
 		} catch (err) {
-			this.logService.error(`[chat setup] sign-up: error parsing response (${err})`);
+			this.onUnknownSignUpError(`[chat setup] sign-up: error parsing response (${err})`);
 		}
 
 		const subscribed = Boolean(parsedResult?.subscribed);
@@ -624,6 +663,30 @@ class ChatSetupRequests extends Disposable {
 		}
 
 		return subscribed;
+	}
+
+	private onUnknownSignUpError(logMessage: string): void {
+		this.dialogService.error(localize('unknownSignUpError', "An error occurred while signing up for Copilot Free."), localize('unknownSignUpErrorDetail', "Please try again."));
+		this.logService.error(logMessage);
+	}
+
+	private onUnprocessableSignUpError(logMessage: string, logDetails: string): void {
+		this.dialogService.prompt({
+			type: Severity.Error,
+			message: localize('unprocessableSignUpError', "An error occurred while signing up for Copilot Free."),
+			detail: logDetails,
+			buttons: [
+				{
+					label: localize('ok', "OK"),
+					run: () => { /* noop */ }
+				},
+				{
+					label: localize('learnMore', "Learn More"),
+					run: () => this.openerService.open(URI.parse(defaultChat.upgradePlanUrl))
+				}
+			],
+		});
+		this.logService.error(logMessage);
 	}
 
 	override dispose(): void {
@@ -644,7 +707,7 @@ type InstallChatClassification = {
 	signedIn: { classification: 'SystemMetaData'; purpose: 'FeatureInsight'; comment: 'Whether the user did sign in prior to installing the extension.' };
 };
 type InstallChatEvent = {
-	installResult: 'installed' | 'cancelled' | 'failedInstall' | 'failedNotSignedIn';
+	installResult: 'installed' | 'cancelled' | 'failedInstall' | 'failedNotSignedIn' | 'failedSignUp';
 	signedIn: boolean;
 };
 
@@ -736,7 +799,7 @@ class ChatSetupController extends Disposable {
 			}
 
 			if (!session) {
-				session = (await this.authenticationService.getSessions(defaultChat.providerId)).at(0);
+				session = (await this.authenticationService.getSessions(defaultChat.providerIds[0])).at(0);
 				if (!session) {
 					return; // unexpected
 				}
@@ -766,7 +829,7 @@ class ChatSetupController extends Disposable {
 		try {
 			showCopilotView(this.viewsService, this.layoutService);
 
-			session = await this.authenticationService.createSession(defaultChat.providerId, defaultChat.providerScopes[0]);
+			session = await this.authenticationService.createSession(defaultChat.providerIds[0], defaultChat.providerScopes[0]);
 			entitlement = await this.requests.forceResolveEntitlement(session);
 		} catch (error) {
 			// noop
@@ -790,6 +853,10 @@ class ChatSetupController extends Disposable {
 
 			if (entitlement !== ChatEntitlement.Limited && entitlement !== ChatEntitlement.Pro && entitlement !== ChatEntitlement.Unavailable) {
 				didSignUp = await this.requests.signUpLimited(session);
+
+				if (!didSignUp) {
+					this.telemetryService.publicLog2<InstallChatEvent, InstallChatClassification>('commandCenter.chatInstall', { installResult: 'failedSignUp', signedIn });
+				}
 			}
 
 			await this.extensionsWorkbenchService.install(defaultChat.extensionId, {
@@ -986,9 +1053,9 @@ class ChatSetupContext extends Disposable {
 		@IStorageService private readonly storageService: IStorageService,
 		@IWorkspaceContextService private readonly workspaceContextService: IWorkspaceContextService,
 		@IExtensionService private readonly extensionService: IExtensionService,
-		@IExtensionManagementService private readonly extensionManagementService: IExtensionManagementService,
 		@IWorkbenchExtensionEnablementService private readonly extensionEnablementService: IWorkbenchExtensionEnablementService,
-		@ILogService private readonly logService: ILogService
+		@ILogService private readonly logService: ILogService,
+		@IExtensionsWorkbenchService private readonly extensionsWorkbenchService: IExtensionsWorkbenchService,
 	) {
 		super();
 
@@ -1013,9 +1080,9 @@ class ChatSetupContext extends Disposable {
 			}
 		}));
 
-		const extensions = await this.extensionManagementService.getInstalled();
+		const extensions = await this.extensionsWorkbenchService.queryLocal();
 		const defaultChatExtension = extensions.find(value => ExtensionIdentifier.equals(value.identifier.id, defaultChat.extensionId));
-		this.update({ installed: !!defaultChatExtension && this.extensionEnablementService.isEnabled(defaultChatExtension) });
+		this.update({ installed: !!defaultChatExtension?.local && this.extensionEnablementService.isEnabled(defaultChatExtension.local) });
 	}
 
 	update(context: { installed: boolean }): Promise<void>;
